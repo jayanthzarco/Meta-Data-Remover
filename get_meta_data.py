@@ -8,6 +8,18 @@ input_path = "/path/to/your/exr/sequence"  # CHANGE THIS TO YOUR PATH
 output_file = "exr_metadata.json"  # Output JSON file name
 
 
+def json_serializable(obj):
+    """Convert non-serializable objects to serializable format for JSON."""
+    if isinstance(obj, bytes):
+        return obj.decode('utf-8', errors='replace')
+    elif isinstance(obj, (Imath.Box2i, Imath.V2f)):
+        return str(obj)
+    elif hasattr(obj, '__dict__'):
+        return obj.__dict__
+    else:
+        return str(obj)
+
+
 def get_all_exr_metadata(exr_path):
     """Extract all available metadata from an EXR file."""
     try:
@@ -23,15 +35,22 @@ def get_all_exr_metadata(exr_path):
         # Extract header attributes
         for key in header.keys():
             try:
-                # Try to get the value directly
                 value = header[key]
-                # Handle special types that aren't JSON serializable
-                if isinstance(value, (Imath.Box2i, Imath.V2f)):
+                # Process the value to ensure it's JSON serializable
+                if isinstance(value, bytes):
+                    metadata[key] = value.decode('utf-8', errors='replace')
+                elif isinstance(value, (Imath.Box2i, Imath.V2f)):
                     metadata[key] = str(value)
+                elif hasattr(value, '__dict__'):
+                    metadata[key] = value.__dict__
                 else:
-                    metadata[key] = value
+                    try:
+                        # Test if value is JSON serializable
+                        json.dumps(value)
+                        metadata[key] = value
+                    except:
+                        metadata[key] = str(value)
             except:
-                # Fallback to string representation
                 metadata[key] = str(header[key])
 
         # Get image dimensions
@@ -88,9 +107,14 @@ def process_exr_sequence(input_path, output_file):
         metadata = get_all_exr_metadata(full_path)
         all_metadata[exr_file] = metadata
 
-    # Write JSON to file
+    # Custom JSON encoder to handle non-serializable objects
+    class CustomJSONEncoder(json.JSONEncoder):
+        def default(self, obj):
+            return json_serializable(obj)
+
+    # Write JSON to file using the custom encoder
     with open(output_file, 'w') as f:
-        json.dump(all_metadata, f, indent=4)
+        json.dump(all_metadata, f, indent=4, cls=CustomJSONEncoder)
 
     print(f"Metadata written to {output_file}")
 
