@@ -1,12 +1,15 @@
 import OpenEXR
 import Imath
 import os
-import sys
-import argparse
+import json
+
+# Input path to EXR sequence directory
+input_path = "/path/to/your/exr/sequence"  # CHANGE THIS TO YOUR PATH
+output_file = "exr_metadata.json"  # Output JSON file name
 
 
 def get_all_exr_metadata(exr_path):
-    """Extract all available metadata from an EXR file and return as key-value pairs."""
+    """Extract all available metadata from an EXR file."""
     try:
         # Open the EXR file
         exr_file = OpenEXR.InputFile(exr_path)
@@ -17,12 +20,18 @@ def get_all_exr_metadata(exr_path):
         # Initialize metadata dictionary
         metadata = {}
 
-        # Extract ALL header attributes
+        # Extract header attributes
         for key in header.keys():
             try:
-                metadata[key] = header[key]
+                # Try to get the value directly
+                value = header[key]
+                # Handle special types that aren't JSON serializable
+                if isinstance(value, (Imath.Box2i, Imath.V2f)):
+                    metadata[key] = str(value)
+                else:
+                    metadata[key] = value
             except:
-                # Some complex types may need special handling
+                # Fallback to string representation
                 metadata[key] = str(header[key])
 
         # Get image dimensions
@@ -51,8 +60,8 @@ def get_all_exr_metadata(exr_path):
         return {"Error": f"Failed to process {exr_path}: {str(e)}"}
 
 
-def process_exr_sequence(input_path, output_file=None):
-    """Process all EXR images in a directory and output metadata as key=value pairs."""
+def process_exr_sequence(input_path, output_file):
+    """Process all EXR images in a directory and output metadata as JSON."""
     # Check if path exists
     if not os.path.exists(input_path):
         print(f"Error: Path '{input_path}' does not exist")
@@ -67,58 +76,24 @@ def process_exr_sequence(input_path, output_file=None):
         print(f"No EXR files found in {input_path}")
         return
 
-    # Sort to ensure proper sequence order (numerical sort if possible)
+    # Sort to ensure proper sequence order
     exr_files.sort(key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else x)
 
-    # Open output file if specified
-    out_file = None
-    if output_file:
-        out_file = open(output_file, 'w')
+    # Dictionary to hold all metadata
+    all_metadata = {}
 
     # Process each image
     for i, exr_file in enumerate(exr_files):
         full_path = os.path.join(input_path, exr_file)
         metadata = get_all_exr_metadata(full_path)
+        all_metadata[exr_file] = metadata
 
-        # Output header for this file
-        header_line = f"=== Image {i}: {exr_file} ==="
-        if out_file:
-            out_file.write(header_line + '\n')
-        else:
-            print(header_line)
+    # Write JSON to file
+    with open(output_file, 'w') as f:
+        json.dump(all_metadata, f, indent=4)
 
-        # Output metadata as key=value pairs
-        for key, value in metadata.items():
-            line = f"{key}={value}"
-            if out_file:
-                out_file.write(line + '\n')
-            else:
-                print(line)
-
-        # Add a blank line between images
-        if out_file:
-            out_file.write('\n')
-        else:
-            print()
-
-    # Close output file if opened
-    if out_file:
-        out_file.close()
-        print(f"Metadata written to {output_file}")
+    print(f"Metadata written to {output_file}")
 
 
-def main():
-    # Set up argument parser
-    parser = argparse.ArgumentParser(description='Extract metadata from EXR image sequence')
-    parser.add_argument('--path', '-p', required=True, help='Path to the folder containing EXR image sequence')
-    parser.add_argument('--output', '-o', help='Output file path (optional)')
-
-    # Parse arguments
-    args = parser.parse_args()
-
-    # Process the sequence
-    process_exr_sequence(args.path, args.output)
-
-
-if __name__ == "__main__":
-    main()
+# Run the function with the specified path
+process_exr_sequence(input_path, output_file)
