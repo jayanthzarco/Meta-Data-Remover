@@ -118,4 +118,4 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ImageMetadataViewer()
     window.show()
-    sys(app.exec_())
+    app.exec_()
